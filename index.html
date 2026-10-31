@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>漫画拼车统计系统 - 云端版</title>
+    <title>饿饿饭饭</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root { --primary: #12B7F5; --primary-hover: #0099FF; --bg: #F2F6FA; --card: #fff; --danger: #FF4D4F; --success: #52C41A; --warning: #FAAD14; --text-main: #333; --text-sub: #888; --border: #EBEDF0; --input-bg: #F7F8FA; }
@@ -581,19 +581,6 @@
     async function approveUser(userId) { const { error } = await supabaseClient.from('profiles').update({ role: 'member' }).eq('id', userId); if (error) showToast('审批失败'); else { showToast('已通过'); openUserApproveModal(); } }
 
     init();
-
-    // ===== 终极魔法：暴力销毁 Netlify 右下角黑边 =====
-    setInterval(function() {
-        // 查找所有可能代表 Netlify 角标的元素
-        const badges = document.querySelectorAll('div, a, iframe');
-        badges.forEach(el => {
-            if ((el.innerHTML && el.innerHTML.includes('Powered by Netlify')) || 
-                (el.src && el.src.includes('netlify')) ||
-                (el.id && el.id.includes('netlify'))) {
-                el.remove(); // 找到就立刻从页面上删掉
-            }
-        });
-    }, 500); // 每半秒钟检查一次，只要它敢出来，立刻删掉
 </script>
 </body>
 </html>
