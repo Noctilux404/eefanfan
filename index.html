@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>漫画拼车统计系统 - 云端版</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --primary: #12B7F5; --primary-hover: #0099FF; --bg: #F2F6FA; --card: #fff; --danger: #FF4D4F; --success: #52C41A; --warning: #FAAD14; --text-main: #333; --text-sub: #888; --border: #EBEDF0; --input-bg: #F7F8FA; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background-color: var(--bg); color: var(--text-main); padding-bottom: 70px; font-size: 15px; line-height: 1.5; }
+        .header { background: var(--card); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); position: sticky; top: 0; z-index: 100; }
+        .header-title { font-size: 18px; font-weight: bold; color: var(--primary); }
+        .header-actions { display: flex; align-items: center; gap: 10px; }
+        .header-actions button { background: none; border: none; color: var(--text-sub); font-size: 14px; cursor: pointer; padding: 5px 10px; }
+        .nav-bottom { position: fixed; bottom: 0; left: 0; width: 100%; background: var(--card); display: flex; box-shadow: 0 -1px 3px rgba(0,0,0,0.05); z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
+        .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 0; color: var(--text-sub); font-size: 12px; cursor: pointer; transition: 0.2s; }
+        .nav-item.active { color: var(--primary); }
+        .nav-icon { font-size: 22px; margin-bottom: 2px; }
+        .container { max-width: 800px; margin: 15px auto; padding: 0 12px; display: none; }
+        .container.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 10px; flex-wrap: wrap; }
+        .search-box { flex: 1; min-width: 200px; position: relative; }
+        .search-box input { width: 100%; padding: 10px 15px 10px 36px; border: 1px solid var(--border); border-radius: 20px; font-size: 14px; outline: none; background: var(--card); transition: 0.2s; }
+        .search-box input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(18,183,245,0.1); }
+        .search-box::before { content: "🔍"; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; color: #aaa; }
+        button { cursor: pointer; border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 500; transition: 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 5px; outline: none; }
+        .btn-primary { background: var(--primary); color: white; } .btn-primary:active { background: var(--primary-hover); }
+        .btn-outline { background: var(--card); border: 1px solid var(--border); color: var(--text-main); }
+        .btn-danger { background: #FFF1F0; color: var(--danger); border: 1px solid #FFA39E; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; border-radius: 6px; }
+        .btn-icon { padding: 8px; font-size: 18px; background: transparent; color: var(--text-sub); }
+        .list-card { background: var(--card); border-radius: 12px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+        .list-row { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid var(--border); }
+        .list-row:last-child { border-bottom: none; }
+        .store-card { background: #fff; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); border: 1px solid #EBEDF0; overflow: hidden; }
+        .store-header { padding: 15px 20px; background: #E6F7FF; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-bottom: 1px solid #BAE7FF; }
+        .store-title { font-size: 17px; font-weight: bold; color: #0050B3; display: flex; align-items: center; gap: 8px; }
+        .store-content { display: none; padding: 15px; background: #F7F8FA; }
+        .store-content.expanded { display: block; }
+        .shop-header { display: flex; justify-content: space-between; align-items: center; padding: 15px; cursor: pointer; background: #fff; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 10px; }
+        .shop-header-left { display: flex; align-items: center; gap: 12px; flex: 1; }
+        .shop-title-wrap { display: flex; flex-direction: column; gap: 4px; }
+        .shop-title { font-size: 16px; font-weight: bold; color: var(--text-main); display: flex; align-items: center; gap: 6px; }
+        .shop-meta { font-size: 12px; color: var(--text-sub); display: flex; gap: 8px; flex-wrap: wrap; }
+        .shop-total { font-size: 15px; font-weight: bold; color: var(--danger); white-space: nowrap; }
+        .shop-content { display: none; padding: 10px 0 0 0; }
+        .shop-content.expanded { display: block; animation: fadeIn 0.3s ease; }
+        .user-block { background: #fff; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); transition: background 0.3s; }
+        @media (min-width: 600px) { .user-block { display: flex; flex-direction: row; } .user-block-left { width: 220px; flex-shrink: 0; border-right: 1px solid var(--border); border-bottom: none !important; } .user-block-right { flex: 1; } }
+        @media (max-width: 599px) { .user-block { display: flex; flex-direction: column; } .user-block-left { border-bottom: 1px solid var(--border); } }
+        .user-block-left { padding: 15px; background: #FAFBFC; border-radius: 8px 8px 0 0; } .user-block-right { padding: 15px; }
+        .user-name { font-size: 18px; font-weight: bold; color: #111; } .user-qq { font-size: 13px; color: var(--text-sub); margin-top: 2px; }
+        .user-stats { margin-top: 10px; margin-bottom: 15px; } .user-stats .total-books { font-size: 14px; font-weight: bold; color: var(--primary); } .user-stats .total-price { font-size: 16px; font-weight: bold; color: var(--danger); margin-top: 2px; }
+        .control-box { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; background: #fff; padding: 12px; border-radius: 8px; border: 1px solid var(--border); }
+        .control-label { display: flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer; font-weight: 500; color: #333; }
+        .control-label input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--primary); cursor: pointer; }
+        .intl-ship-row { display: flex; align-items: center; gap: 5px; margin-top: 5px; font-size: 14px; } .intl-ship-val { font-weight: bold; color: var(--danger); font-size: 15px; }
+        .alert-dot { display: inline-block; width: 8px; height: 8px; background: var(--danger); border-radius: 50%; margin-left: 5px; }
+        .book-list { display: flex; flex-direction: column; } .book-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px dashed #eee; } .book-item:last-child { border-bottom: none; padding-bottom: 0; }
+        .book-cover { width: 45px; height: 68px; object-fit: cover; border-radius: 4px; border: 1px solid #eee; background: #f5f5f5; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 11px; }
+        .book-info { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 4px; } .book-title { font-weight: bold; font-size: 15px; color: #222; }
+        .book-price-row { display: flex; align-items: baseline; gap: 10px; font-size: 13px; } .book-original-price { color: var(--text-sub); } .book-rmb-price { color: var(--primary); font-weight: bold; font-size: 15px; } .book-actions { display: flex; gap: 6px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: flex-end; }
+        @media (min-width: 600px) { .modal { align-items: center; } } .modal.active { display: flex; animation: fadeIn 0.2s ease; }
+        .modal-content { background: var(--card); width: 100%; max-width: 600px; max-height: 90vh; border-radius: 16px 16px 0 0; padding: 20px; overflow-y: auto; animation: slideUp 0.3s ease; }
+        @media (min-width: 600px) { .modal-content { border-radius: 16px; } } @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; } .modal-title { font-size: 18px; font-weight: bold; } .close-btn { font-size: 24px; color: #ccc; cursor: pointer; line-height: 1; background: none; border: none; }
+        .form-group { margin-bottom: 15px; } .form-group label { display: block; font-size: 14px; color: var(--text-sub); margin-bottom: 6px; }
+        .form-control { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; background: var(--input-bg); outline: none; transition: 0.2s; } .form-control:focus { background: #fff; border-color: var(--primary); }
+        .form-row { display: flex; gap: 12px; } .form-row > div { flex: 1; }
+        .user-picker-box { max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); margin-top: 8px; }
+        .picker-item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid var(--border); cursor: pointer; } .picker-item:last-child { border-bottom: none; }
+        .picker-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); margin-right: 12px; } .picker-qq { margin-left: auto; color: var(--text-sub); font-size: 12px; }
+        .lib-list { max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 15px; } .lib-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; } .lib-item:last-child { border-bottom: none; }
+        .toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 12px 24px; border-radius: 8px; font-size: 14px; z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none; } .toast.show { opacity: 1; }
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-sub); } .empty-state div { font-size: 40px; margin-bottom: 10px; opacity: 0.5; }
+        .highlight-animation { animation: highlight 2s ease-out; } @keyframes highlight { 0% { box-shadow: 0 0 0 3px var(--danger); background: #FFF1F0; } 100% { box-shadow: none; background: #fff; } }
+        .tag { font-size: 12px; padding: 2px 6px; border-radius: 4px; background: #eee; color: #666; } .tag-admin { background: #e6f7ff; color: #1890ff; }
+
+        /* 暴力隐藏 Netlify 右下角角标 */
+        #netlify-badge, 
+        .netlify-badge, 
+        iframe[src*="netlify"], 
+        a[href*="netlify.com"],
+        div[style*="Powered by Netlify"] {
+            display: none !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading-mask" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.9);z-index:9999;display:flex;justify-content:center;align-items:center;font-weight:bold;color:#12B7F5;font-size:18px;">⏳ 正在初始化系统...</div>
+
+    <div id="auth-screen" style="display:none;">
+        <div style="max-width: 350px; margin: 50px auto; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+            <h2 style="text-align:center; color:var(--primary); margin-bottom:20px;">拼车系统登录</h2>
+            <div class="form-group"><label>邮箱</label><input type="email" id="auth-email" class="form-control" placeholder="请输入邮箱"></div>
+            <div class="form-group"><label>密码</label><input type="password" id="auth-password" class="form-control" placeholder="请输入密码"></div>
+            <div id="register-fields" style="display:none;">
+                <div class="form-group"><label>昵称</label><input type="text" id="auth-username" class="form-control" placeholder="你的昵称"></div>
+                <div class="form-group"><label>QQ号 (用于匹配对账)</label><input type="text" id="auth-qq" class="form-control" placeholder="你的QQ号"></div>
+            </div>
+            <button class="btn-primary" style="width:100%; margin-top:10px;" id="auth-btn" onclick="handleAuth()">登录</button>
+            <div style="text-align:center; margin-top:15px; font-size:14px; color:#666;">
+                <span id="auth-toggle-text">还没有账号？</span>
+                <a href="javascript:void(0)" onclick="toggleAuthMode()" style="color:var(--primary); text-decoration:none;" id="auth-toggle-btn">去注册</a>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-screen" style="display:none;">
+        <div class="header">
+            <div class="header-title">🚗 拼车系统</div>
+            <div class="header-actions">
+                <span id="user-info" style="font-size:14px; color:#666;"></span>
+                <button class="btn-outline btn-sm" onclick="logout()">退出</button>
+            </div>
+        </div>
+
+        <div id="tab-collect" class="container">
+            <div class="toolbar">
+                <div class="search-box"><input type="text" id="shop-search" placeholder="搜索店名或车名..." oninput="filterShops(this.value)"></div>
+                <button class="btn-primary btn-sm" onclick="addShop()">+ 新建店/车</button>
+            </div>
+            <div id="shops-container"></div>
+        </div>
+
+        <div id="tab-members" class="container">
+            <div class="toolbar">
+                <div class="search-box"><input type="text" id="member-search" placeholder="搜索团员昵称或QQ..." oninput="filterMembers(this.value)"></div>
+                <div style="display:flex; gap:10px; flex-shrink:0;" id="admin-tools">
+                    <button class="btn-primary btn-sm" onclick="openUserModal()">+ 登记团员</button>
+                    <button class="btn-outline btn-sm" onclick="openWarehouseModal()">🏢 转运仓</button>
+                    <button class="btn-danger btn-sm" onclick="openUserApproveModal()">👥 用户审批</button>
+                </div>
+            </div>
+            <div id="members-container"></div>
+        </div>
+
+        <div id="tab-personal" class="container">
+            <div class="toolbar" style="justify-content:space-between;">
+                <span style="font-weight:bold; color:var(--primary);">我的私人账本</span>
+                <button class="btn-primary btn-sm" onclick="openPersonalBookModal()">+ 添加私人买书记录</button>
+            </div>
+            <div id="personal-container"></div>
+        </div>
+
+        <div id="tab-alerts" class="container">
+            <div id="alerts-container"></div>
+        </div>
+
+        <div class="nav-bottom" id="bottom-nav"></div>
+    </div>
+
+    <div id="global-modal" class="modal">
+        <div class="modal-content" id="modal-body"></div>
+    </div>
+    <div id="toast" class="toast">提示信息</div>
+
+<script>
+    const SUPABASE_URL = 'https://btmxcaecixdimhpqennq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0bXhjYWVjaXhkaW1ocHFlbm5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM0NjI2NjUsImV4cCI6MjEwOTAzODY2NX0.6CpN8UMlFLep2ySJ3A3I6W97YnqcEyyRZrG0Z65Y7O8';
+    
+    let isCloudMode = false;
+    let supabaseClient = null;
+    let appData = { users: [], shops: [], warehouses: [] };
+    let myProfile = null; 
+    let isAdmin = false; 
+    let currentUser = null; 
+    let personalBooks = [];
+    
+    let expandedStores = {}; 
+    let expandedShops = {}; 
+    let expandedRegistryUsers = {};
+    let searchKeyword = ''; 
+    let memberSearchKeyword = ''; 
+    let selectedUserIds = new Set(); 
+    let tempCoverBase64 = null; 
+    let isRegisterMode = false;
+
+    async function init() {
+        try {
+            if (SUPABASE_URL && SUPABASE_URL !== '你的_SUPABASE_URL' && SUPABASE_URL.startsWith('http')) {
+                isCloudMode = true;
+                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                console.log("已启用云端模式");
+                await checkCloudAuth();
+            } else {
+                isCloudMode = false;
+                myProfile = { username: '本地体验管理员', qq: '00000', role: 'admin' };
+                isAdmin = true;
+                currentUser = { id: 'local_user' };
+                await loadLocalData();
+                enterMainApp();
+            }
+        } catch (err) {
+            console.error("初始化失败:", err);
+        } finally {
+            document.getElementById('loading-mask').style.display = 'none';
+        }
+    }
+
+    async function checkCloudAuth() {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session) {
+            await verifyCloudUser(session.user);
+        } else {
+            showAuthScreen();
+        }
+    }
+
+    async function verifyCloudUser(user) {
+        currentUser = user;
+        // 使用 maybeSingle 安全地查询，不会因0行或多行报错
+        const { data: profile, error: profileError } = await supabaseClient
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .maybeSingle();
+        
+        if (profileError) {
+            console.error("查询档案出错:", profileError);
+            alert("查询档案失败: " + profileError.message);
+            return logout();
+        }
+
+        if (!profile) { 
+            // 如果档案不存在，前端进行安全的“补建”
+            console.log("未找到档案，尝试安全补建...");
+            const username = user.user_metadata?.username || '新用户';
+            const qq = user.user_metadata?.qq || '000000';
+            const safeUsername = username + '_' + Math.floor(Math.random()*1000);
+            
+            const { error: insertError } = await supabaseClient
+                .from('profiles')
+                .insert([{ id: user.id, username: safeUsername, qq: qq, role: 'member' }]);
+            
+            if (insertError) {
+                // 如果是主键冲突（23505），说明触发器刚刚已经创建了，我们不应该报错，而是继续
+                if (insertError.code === '23505') {
+                    console.log("档案已由触发器创建，前端插入被忽略。");
+                } else {
+                    alert("自动补建档案失败！错误: " + insertError.message);
+                    return logout();
+                }
+            }
+            
+            // 重新查询一次获取档案
+            const { data: newProfile } = await supabaseClient.from('profiles').select('*').eq('id', user.id).single();
+            if (newProfile) {
+                myProfile = newProfile;
+            } else {
+                alert("补建档案后仍无法获取，请检查数据库。");
+                return logout();
+            }
+        } else {
+            myProfile = profile;
+        }
+        
+        isAdmin = (myProfile.role === 'admin');
+
+        if (myProfile.role === 'pending') {
+            showAuthScreen(); 
+            alert('您的账号正在等待管理员审批，请通过后再登录。'); 
+            logout(); 
+            return;
+        }
+
+        await fetchCloudData();
+        enterMainApp();
+    }
+
+    function showAuthScreen() { 
+        document.getElementById('auth-screen').style.display = 'block'; 
+        document.getElementById('app-screen').style.display = 'none'; 
+    }
+
+    async function handleAuth() {
+        const email = document.getElementById('auth-email').value;
+        const password = document.getElementById('auth-password').value;
+        if (!email || !password) return showToast('请填写邮箱和密码');
+        
+        if (isRegisterMode) {
+            const username = document.getElementById('auth-username').value;
+            const qq = document.getElementById('auth-qq').value;
+            if (!username || !qq) return showToast('请填写昵称和QQ');
+            
+            const { error } = await supabaseClient.auth.signUp({ 
+                email, password, options: { data: { username, qq } } 
+            });
+            if (error) showToast('注册失败: ' + error.message);
+            else { showToast('注册成功！请直接登录。'); toggleAuthMode(); }
+        } else {
+            const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            if (error) showToast('登录失败: ' + error.message); 
+            else location.reload();
+        }
+    }
+
+    async function logout() { if(isCloudMode) await supabaseClient.auth.signOut(); location.reload(); }
+
+    function toggleAuthMode() {
+        isRegisterMode = !isRegisterMode;
+        document.getElementById('register-fields').style.display = isRegisterMode ? 'block' : 'none';
+        document.getElementById('auth-btn').innerText = isRegisterMode ? '注册新账号' : '登录';
+        document.getElementById('auth-toggle-text').innerText = isRegisterMode ? '已有账号？' : '还没有账号？';
+        document.getElementById('auth-toggle-btn').innerText = isRegisterMode ? '去登录' : '去注册';
+    }
+
+    async function fetchCloudData() {
+        try {
+            const { data, error } = await supabaseClient.from('shared_data').select('data').eq('id', 1).single();
+            if (error) throw error;
+            if (data && data.data) { 
+                appData = data.data; 
+                processDataCompatibility(); 
+            }
+            if (!isAdmin) {
+                const { data: pData } = await supabaseClient.from('personal_books').select('*').order('created_at', { ascending: false });
+                personalBooks = pData || [];
+            }
+        } catch (err) {
+            console.error("拉取数据失败:", err);
+        }
+    }
+
+    async function saveCloudData() {
+        if (!isAdmin) return;
+        const { error } = await supabaseClient.from('shared_data').update({ data: appData, updated_at: new Date().toISOString() }).eq('id', 1);
+        if (error) { showToast('⚠️ 云端同步失败！'); console.error(error); }
+    }
+
+    function loadLocalData() { return new Promise((resolve) => { const request = indexedDB.open('ComicGroupDB', 1); request.onupgradeneeded = (e) => { const db = e.target.result; if (!db.objectStoreNames.contains('appData')) db.createObjectStore('appData'); }; request.onsuccess = (e) => { const db = e.target.result; const transaction = db.transaction(['appData'], 'readonly'); const store = transaction.objectStore('appData'); const getReq = store.get('mainData'); getReq.onsuccess = () => { if (getReq.result) appData = getReq.result; processDataCompatibility(); resolve(); }; }; request.onerror = () => resolve(); }); }
+    function saveLocalData() { if (isCloudMode) return; const request = indexedDB.open('ComicGroupDB', 1); request.onsuccess = (e) => { const db = e.target.result; const transaction = db.transaction(['appData'], 'readwrite'); transaction.objectStore('appData').put(appData, 'mainData'); }; }
+
+    function processDataCompatibility() {
+        if (!appData.warehouses) appData.warehouses = [];
+        appData.shops.forEach(shop => { if (!shop.storeName) shop.storeName = '默认店铺'; if (!shop.books) shop.books = []; shop.items.forEach(item => { if (item.isArrived === undefined) item.isArrived = false; if (item.isDelivered === undefined) item.isDelivered = false; }); });
+    }
+
+    function enterMainApp() {
+        document.getElementById('auth-screen').style.display = 'none';
+        document.getElementById('app-screen').style.display = 'block';
+        
+        let roleTag = isAdmin ? '<span class="tag tag-admin">管理员</span>' : '<span class="tag">团员</span>';
+        if(!isCloudMode) roleTag = '<span class="tag tag-admin">单机体验版</span>';
+        document.getElementById('user-info').innerHTML = `${myProfile.username} ${roleTag}`;
+        setupNav();
+        if (isAdmin) switchTab('tab-collect'); else switchTab('tab-members');
+    }
+
+    function setupNav() {
+        const nav = document.getElementById('bottom-nav');
+        if (isAdmin) {
+            nav.innerHTML = `<div class="nav-item active" onclick="switchTab('tab-collect', this)"><div class="nav-icon">🛒</div>分车登记</div><div class="nav-item" onclick="switchTab('tab-members', this)"><div class="nav-icon">👥</div>团员与对账</div><div class="nav-item" onclick="switchTab('tab-alerts', this)"><div class="nav-icon">🚨</div>未收清单</div>`;
+        } else {
+            document.getElementById('tab-collect').style.display = 'none'; document.getElementById('tab-alerts').style.display = 'none'; document.getElementById('admin-tools').style.display = 'none';
+            nav.innerHTML = `<div class="nav-item active" onclick="switchTab('tab-members', this)"><div class="nav-icon">📋</div>我的对账</div><div class="nav-item" onclick="switchTab('tab-personal', this)"><div class="nav-icon">📝</div>私人账本</div>`;
+        }
+    }
+
+    function switchTab(tabId, el) {
+        document.querySelectorAll('.container').forEach(c => c.classList.remove('active')); document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active'); if(el) el.classList.add('active');
+        if(tabId === 'tab-collect') renderShops(); if(tabId === 'tab-members') renderMembers(); if(tabId === 'tab-alerts') renderAlerts(); if(tabId === 'tab-personal') renderPersonalLedger();
+    }
+
+    function filterShops(keyword) { searchKeyword = keyword.trim().toLowerCase(); renderShops(); }
+    function toggleStoreExpand(storeName) { expandedStores[storeName] = !expandedStores[storeName]; renderShops(); }
+    function toggleShopExpand(shopId) { expandedShops[shopId] = !expandedShops[shopId]; renderShops(); }
+
+    function renderShops() {
+        const container = document.getElementById('shops-container'); container.innerHTML = '';
+        let filteredShops = appData.shops;
+        if(searchKeyword) filteredShops = appData.shops.filter(s => s.name.toLowerCase().includes(searchKeyword) || (s.storeName && s.storeName.toLowerCase().includes(searchKeyword)));
+        if(filteredShops.length === 0) { container.innerHTML = `<div class="empty-state"><div>🛒</div>暂无数据，点击上方新建</div>`; return; }
+        const groupedByStore = {};
+        filteredShops.forEach(shop => { const sName = shop.storeName || '默认店铺'; if (!groupedByStore[sName]) groupedByStore[sName] = []; groupedByStore[sName].push(shop); });
+        for (let storeName in groupedByStore) {
+            const shopsInStore = groupedByStore[storeName]; const isStoreExpanded = expandedStores[storeName] !== false; let shopsHTML = '';
+            shopsInStore.forEach(shop => {
+                let totalRMB = 0; shop.items.forEach(item => totalRMB += parseFloat(item.convertedPrice) || 0);
+                let origDisplay = `书价 ${shop.shopCurrency} ${shop.items.reduce((sum, i) => sum + (parseFloat(i.originalPrice)||0), 0).toFixed(2)}`;
+                let isExpanded = expandedShops[shop.id];
+                let settingsHTML = `<div style="padding: 10px 0; border-bottom: 1px dashed #eee; margin-bottom: 15px; display:flex; flex-wrap:wrap; gap:10px; font-size:13px;"><select onchange="updateShopSetting('${shop.id}', 'warehouseName', this.value)" class="form-control" style="width:auto; padding:4px; flex:1;"><option value="">-- 无转运仓 --</option>${appData.warehouses.map(w => `<option value="${w}" ${shop.warehouseName === w ? 'selected' : ''}>${w}</option>`).join('')}</select><select onchange="updateShopSetting('${shop.id}', 'shopCurrency', this.value)" class="form-control" style="width:auto; padding:4px; flex:1;"><option value="CAD" ${shop.shopCurrency === 'CAD' ? 'selected' : ''}>CAD</option><option value="USD" ${shop.shopCurrency === 'USD' ? 'selected' : ''}>USD</option><option value="RMB" ${shop.shopCurrency === 'RMB' ? 'selected' : ''}>RMB</option></select><div style="display:flex; align-items:center; gap:5px;">附加邮税: <input type="number" value="${shop.shopShipping}" onchange="updateShopSetting('${shop.id}', 'shopShipping', this.value)" class="form-control" style="width:60px; padding:4px;"></div><div style="display:flex; align-items:center; gap:5px;">平摊: <input type="number" value="${shop.totalBooks}" onchange="updateShopSetting('${shop.id}', 'totalBooks', this.value)" class="form-control" style="width:50px; padding:4px;"> 本</div><div style="display:flex; align-items:center; gap:5px;">总国际邮: <input type="number" value="${shop.totalInternationalShipping}" onchange="updateShopSetting('${shop.id}', 'totalInternationalShipping', this.value)" class="form-control" style="width:70px; padding:4px; border-color:var(--danger);"></div></div>`;
+                const groupedByUser = {}; shop.items.forEach(item => { if(!groupedByUser[item.userId]) groupedByUser[item.userId] = []; groupedByUser[item.userId].push(item); });
+                let usersHTML = '';
+                for(let userId in groupedByUser) {
+                    const user = appData.users.find(u => u.id === userId) || { nickname: '未知', qq: '-' };
+                    const userItems = groupedByUser[userId];
+                    const userTotalPrice = userItems.reduce((sum, item) => sum + (parseFloat(item.convertedPrice) || 0), 0).toFixed(2);
+                    const allConfirmed = userItems.every(i => i.isConfirmed); const allBookPaid = userItems.every(i => i.isBookPaid); const allShipPaid = userItems.every(i => i.isShipPaid) && userItems.some(i => i.isShipPaid !== undefined);
+                    let perBookIntl = (shop.totalBooks > 0 && shop.totalInternationalShipping > 0) ? (shop.totalInternationalShipping / shop.totalBooks) : 0; let userIntl = userItems.length * perBookIntl;
+                    let itemsHTML = userItems.map(item => `<div class="book-item">${item.coverImage ? `<img src="${item.coverImage}" class="book-cover">` : `<div class="book-cover">无图</div>`}<div class="book-info"><div class="book-title">${item.bookName}</div><div class="book-price-row"><span class="book-original-price">${shop.shopCurrency} ${item.originalPrice}</span><span class="book-rmb-price">≈ ¥${item.convertedPrice}</span></div></div><div class="book-actions"><button class="btn-danger btn-sm" onclick="deleteItemRecord('${shop.id}', '${item.id}')">删</button></div></div>`).join('');
+                    usersHTML += `<div class="user-block" id="user-block-${shop.id}-${userId}"><div class="user-block-left"><div class="user-name">${user.nickname}</div><div class="user-qq">QQ: ${user.qq}</div><div class="user-stats"><div class="total-books">总计: ${userItems.length} 本</div><div class="total-price">共: ¥${userTotalPrice}</div></div><div class="control-box"><label class="control-label"><input type="checkbox" ${allConfirmed ? 'checked' : ''} onchange="toggleUserBatch('${shop.id}', '${userId}', 'isConfirmed', this.checked)">确认购买 ${!allConfirmed ? '<span class="alert-dot"></span>' : ''}</label><label class="control-label"><input type="checkbox" ${allBookPaid ? 'checked' : ''} onchange="toggleUserBatch('${shop.id}', '${userId}', 'isBookPaid', this.checked)">收齐刊款 ${!allBookPaid ? '<span class="alert-dot"></span>' : ''}</label><div class="intl-ship-row"><span>国际邮(自动):</span><span class="intl-ship-val">¥${userIntl.toFixed(2)}</span></div><label class="control-label"><input type="checkbox" ${allShipPaid ? 'checked' : ''} ${shop.totalInternationalShipping === 0 ? 'disabled' : ''} onchange="toggleUserBatch('${shop.id}', '${userId}', 'isShipPaid', this.checked)">收齐邮费 ${(shop.totalInternationalShipping > 0 && !allShipPaid) ? '<span class="alert-dot"></span>' : ''}</label></div></div><div class="user-block-right"><div class="book-list">${itemsHTML || '<div style="color:#999;font-size:13px;">未分配任何刊物</div>'}</div></div></div>`;
+                }
+                shopsHTML += `<div class="shop-card" style="margin-bottom:15px;"><div class="shop-header" onclick="toggleShopExpand('${shop.id}')"><div class="shop-header-left"><div class="shop-title-wrap"><div class="shop-title">🚗 ${shop.name} <button class="btn-icon" style="font-size:12px;" onclick="event.stopPropagation(); renameShop('${shop.id}')">✏️</button></div><div class="shop-meta"><span>🏢 ${shop.warehouseName || '未设转运仓'}</span><span>(${shop.items.length}/${shop.totalBooks}本)</span><span>单本摊: ${((Math.ceil(((shop.shopShipping>0&&shop.totalBooks>0)?(shop.shopShipping/shop.totalBooks):0)*10)/10)).toFixed(1)}</span></div></div></div><div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:5px;"><div class="shop-total">¥${totalRMB.toFixed(2)}</div><div style="font-size:11px; color:#aaa;">${origDisplay}</div></div></div><div class="shop-content ${isExpanded ? 'expanded' : ''}">${settingsHTML}<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;"><span style="font-weight:bold; color:var(--primary); font-size:14px;">👥 团员结算明细</span><div style="display:flex; gap:8px; flex-wrap:wrap;"><button class="btn-outline btn-sm" onclick="openBookLibraryModal('${shop.id}')">📚 管理本车书目</button><button class="btn-primary btn-sm" onclick="openAssignModal('${shop.id}')">🧑‍🤝‍🧑 分配团员购书</button><button class="btn-danger btn-sm" onclick="deleteShop('${shop.id}')">删车</button></div></div>${usersHTML || '<div style="text-align:center; color:#999; font-size:13px; padding:20px 0;">暂无购书记录</div>'}</div></div>`;
+            });
+            container.innerHTML += `<div class="store-card"><div class="store-header" onclick="toggleStoreExpand('${storeName}')"><div class="store-title">🏪 ${storeName} <span style="font-size:12px; font-weight:normal; color:#1890ff; background:#e6f7ff; padding:2px 8px; border-radius:10px;">${shopsInStore.length} 车</span></div><div style="color:#1890ff; font-size:14px;">${isStoreExpanded ? '收起 ▲' : '展开 ▼'}</div></div><div class="store-content ${isStoreExpanded ? 'expanded' : ''}">${shopsHTML}</div></div>`;
+        }
+    }
+
+    function filterMembers(keyword) { memberSearchKeyword = keyword.trim().toLowerCase(); renderMembers(); }
+    function toggleRegistryUser(userId) { expandedRegistryUsers[userId] = !expandedRegistryUsers[userId]; renderMembers(); }
+
+    function renderMembers() {
+        const container = document.getElementById('members-container'); let registryList = [];
+        let sourceUsers = appData.users;
+        if (!isAdmin) sourceUsers = appData.users.filter(u => u.qq == myProfile.qq || u.nickname == myProfile.username);
+        sourceUsers.forEach(user => {
+            if (memberSearchKeyword) { const match = user.nickname.toLowerCase().includes(memberSearchKeyword) || (user.qq||'').toLowerCase().includes(memberSearchKeyword); if (!match) return; }
+            let purchases = []; appData.shops.forEach(shop => { shop.items.filter(i => i.userId === user.id).forEach(i => { purchases.push({ shopName: shop.name, shopId: shop.id, ...i }); }); });
+            let total = purchases.reduce((sum, p) => sum + parseFloat(p.convertedPrice), 0).toFixed(2);
+            registryList.push({ user, purchases, total });
+        });
+        registryList.sort((a, b) => b.purchases.length - a.purchases.length);
+        if(registryList.length === 0) { container.innerHTML = '<div class="empty-state"><div>📋</div>暂无记录</div>'; return; }
+        container.innerHTML = registryList.map(data => {
+            const isExpanded = expandedRegistryUsers[data.user.id] || !isAdmin; 
+            return `<div class="list-card"><div class="list-row" style="cursor:pointer;" onclick="toggleRegistryUser('${data.user.id}')"><div style="display:flex; align-items:center; gap:12px;"><div style="width:40px; height:40px; background:#EBF5FF; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--primary); font-size:20px;">👤</div><div><div style="font-weight:bold; font-size:15px;">${data.user.nickname} <span style="font-size:12px;color:#888;font-weight:normal;">QQ: ${data.user.qq}</span></div><div style="font-size:12px; color:var(--text-sub);">买书 ${data.purchases.length} 本</div></div></div><div style="text-align:right; display:flex; align-items:center; gap:15px;"><div style="color:${data.total > 0 ? 'var(--danger)' : 'var(--text-sub)'}; font-weight:bold; font-size:16px;">¥${data.total}</div>${isAdmin ? `<div style="font-size:12px; color:var(--primary);">${isExpanded ? '收起' : '展开'}</div>` : ''}</div></div>${isExpanded ? `<div style="padding: 0 15px 15px 15px; background:#FAFBFC; border-top:1px dashed #eee;">${renderPurchaseList(data.purchases, 'unarrived')}${renderPurchaseList(data.purchases, 'arrived')}${renderPurchaseList(data.purchases, 'delivered')}${data.purchases.length === 0 ? '<div style="text-align:center; color:#999; padding:20px 0; font-size:13px;">暂无购书记录</div>' : ''}<div style="margin-top: 15px; display: flex; gap: 10px; align-items:center;"><span style="font-size:13px; font-weight:bold; color:var(--text-sub); white-space:nowrap;">📝 备注:</span><input type="text" placeholder="${isAdmin ? '填写备注...' : '无'}" value="${data.user.note || ''}" ${isAdmin ? `onchange="updateUserNote('${data.user.id}', this.value)"` : 'disabled'} class="form-control" style="padding:8px; font-size:13px; background:${isAdmin?'#fff':'#f5f5f5'};"></div></div>` : ''}</div>`;
+        }).join('');
+    }
+
+    function renderPurchaseList(purchases, type) {
+        let filtered = []; let title = ''; let color = '';
+        if (type === 'unarrived') { filtered = purchases.filter(p => !p.isArrived && !p.isDelivered); title = '⏳ 未到货'; color = 'var(--warning)'; }
+        else if (type === 'arrived') { filtered = purchases.filter(p => p.isArrived && !p.isDelivered); title = '📦 已到货 / 待发货'; color = 'var(--primary)'; }
+        else if (type === 'delivered') { filtered = purchases.filter(p => p.isDelivered); title = '✅ 已发货'; color = 'var(--success)'; }
+        if (filtered.length === 0) return '';
+        return `<div style="margin-bottom: 15px; margin-top: 10px;"><div style="font-weight:bold; color:${color}; font-size:13px; margin-bottom:8px;">${title} (${filtered.length})</div><div style="background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden;">${filtered.map(p => `<div style="display:flex; justify-content:space-between; padding:12px; font-size:13px; border-bottom:1px solid #f0f0f0; align-items:center;"><div style="display:flex; gap:10px; align-items:center;">${p.coverImage ? `<img src="${p.coverImage}" style="width:30px; height:45px; object-fit:cover; border-radius:3px;">` : `<div style="width:30px; height:45px; background:#f5f5f5; border-radius:3px; display:flex; align-items:center; justify-content:center; color:#ccc; font-size:10px;">无图</div>`}<div><div style="font-weight:bold; color:#333;">${p.bookName}</div><div style="color:var(--text-sub); font-size:12px; margin-top:2px;">🏪 ${p.shopName} <span style="color:var(--primary); font-weight:bold; margin-left:5px;">¥${p.convertedPrice}</span></div></div></div><div style="display:flex; gap:10px; align-items:center;"><label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; color:${p.isArrived ? 'var(--primary)' : 'var(--text-sub)'};"><input type="checkbox" ${p.isArrived ? 'checked' : ''} ${isAdmin ? `onchange="toggleLogistics('${p.shopId}', '${p.id}', 'arrive')"` : 'disabled'} style="width:16px; height:16px; accent-color:var(--primary);">到货</label><label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; color:${p.isDelivered ? 'var(--success)' : 'var(--text-sub)'};"><input type="checkbox" ${p.isDelivered ? 'checked' : ''} ${isAdmin ? `onchange="toggleLogistics('${p.shopId}', '${p.id}', 'deliver')"` : 'disabled'} style="width:16px; height:16px; accent-color:var(--success);">发货</label></div></div>`).join('')}</div></div>`;
+    }
+
+    function renderPersonalLedger() {
+        const container = document.getElementById('personal-container');
+        if (personalBooks.length === 0) { container.innerHTML = '<div class="empty-state"><div>📚</div>还没有私人记账，点击上方添加</div>'; return; }
+        container.innerHTML = `<div class="list-card">${personalBooks.map(b => `<div class="list-row"><div><div style="font-weight:bold;">${b.book_name}</div><div style="font-size:12px; color:#888;">来自: ${b.shop_name || '未填'} ${b.note ? '| '+b.note : ''}</div></div><div style="display:flex; gap:10px; align-items:center;"><span style="color:var(--danger); font-weight:bold;">¥${b.price}</span><button class="btn-danger btn-sm" onclick="deletePersonalBook('${b.id}')">删</button></div></div>`).join('')}</div>`;
+    }
+
+    function openPersonalBookModal() { openModal(`<div class="form-group"><label>书名</label><input type="text" id="pb-name" class="form-control"></div><div class="form-group"><label>价格</label><input type="number" id="pb-price" class="form-control" step="0.01"></div><div class="form-group"><label>来源店名 (选填)</label><input type="text" id="pb-shop" class="form-control"></div><div class="form-group"><label>备注 (选填)</label><input type="text" id="pb-note" class="form-control"></div><button class="btn-primary" style="width:100%;" onclick="savePersonalBook()">保存</button>`, '400px'); }
+
+    async function savePersonalBook() {
+        const name = document.getElementById('pb-name').value.trim(); const price = parseFloat(document.getElementById('pb-price').value) || 0;
+        if (!name) return showToast('请输入书名');
+        if(isCloudMode) {
+            const { error } = await supabaseClient.from('personal_books').insert([{ user_id: currentUser.id, book_name: name, price: price, shop_name: document.getElementById('pb-shop').value.trim(), note: document.getElementById('pb-note').value.trim() }]);
+            if (error) showToast('保存失败'); else { closeModal(); showToast('已保存'); await fetchCloudData(); renderPersonalLedger(); }
+        } else { showToast("单机版暂不支持"); closeModal(); }
+    }
+
+    async function deletePersonalBook(id) { if (!confirm('确定删除吗？')) return; if(isCloudMode) { await supabaseClient.from('personal_books').delete().eq('id', id); await fetchCloudData(); renderPersonalLedger(); } }
+
+    function renderAlerts() {
+        const container = document.getElementById('alerts-container'); let alerts = [];
+        appData.shops.forEach(shop => {
+            const grouped = {}; shop.items.forEach(i => { if (!grouped[i.userId]) grouped[i.userId] = []; grouped[i.userId].push(i); });
+            for (let uid in grouped) {
+                const user = appData.users.find(u => u.id === uid) || { nickname: '未知' }; const items = grouped[uid]; let missing = [];
+                if (!items.every(i => i.isConfirmed)) missing.push('未确认'); if (!items.every(i => i.isBookPaid)) missing.push('未交刊款'); if (shop.totalInternationalShipping > 0 && !items.every(i => i.isShipPaid)) missing.push('未交国际邮');
+                if (missing.length > 0) alerts.push({ storeName: shop.storeName || '默认店铺', shopId: shop.id, shopName: shop.name, userId: uid, user: user.nickname, missing: missing.join('、') });
+            }
+        });
+        if (alerts.length === 0) { container.innerHTML = '<div class="empty-state" style="color:var(--success);"><div>🎉</div>太棒了！目前没有需要催收的款项。</div>'; return; }
+        container.innerHTML = `<div class="list-card"><div class="list-row" style="background: #FFF1F0; font-weight: bold; color: var(--danger); font-size: 13px;"><div>车名 / 团员</div><div>缺失项</div></div>${alerts.map(a => `<div class="list-row" style="cursor:pointer;" onclick="jumpToUser('${a.storeName}', '${a.shopId}', '${a.userId}')"><div><div style="font-weight:bold; font-size:14px; color:var(--primary);">${a.user} <span style="font-size:12px;color:#888;">(点击定位)</span></div><div style="font-size:12px; color:var(--text-sub);">🏪 ${a.storeName} - 🚗 ${a.shopName}</div></div><div style="color:var(--danger); font-weight:bold; font-size:13px; text-align:right;">${a.missing}</div></div>`).join('')}</div>`;
+    }
+
+    function jumpToUser(storeName, shopId, userId) {
+        expandedStores[storeName] = true; expandedShops[shopId] = true;
+        const navItems = document.querySelectorAll('.nav-item'); let collectTabBtn = navItems[0]; switchTab('tab-collect', collectTabBtn);
+        setTimeout(() => { const target = document.getElementById(`user-block-${shopId}-${userId}`); if (target) { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); target.classList.add('highlight-animation'); setTimeout(() => target.classList.remove('highlight-animation'), 2000); } }, 150);
+    }
+
+    async function toggleLogistics(shopId, itemId, type) {
+        if (!isAdmin) return;
+        const shop = appData.shops.find(s => s.id === shopId); const item = shop.items.find(i => i.id === itemId); if (!item) return;
+        if (type === 'arrive') { item.isArrived = !item.isArrived; if (!item.isArrived) item.isDelivered = false; } else if (type === 'deliver') { item.isDelivered = !item.isDelivered; if (item.isDelivered) item.isArrived = true; }
+        if(isCloudMode) await saveCloudData(); else saveLocalData(); renderMembers();
+    }
+
+    async function toggleUserBatch(shopId, userId, field, checked) {
+        const shop = appData.shops.find(s => s.id === shopId);
+        shop.items.forEach(item => { if(item.userId === userId) { if (field === 'isConfirmed' || field === 'isBookPaid') { item.isConfirmed = checked; item.isBookPaid = checked; } else { item[field] = checked; } } });
+        if(isCloudMode) await saveCloudData(); else saveLocalData();
+        const box = event.target.closest('.control-box');
+        if (field === 'isConfirmed' || field === 'isBookPaid') { box.querySelectorAll('input[onchange*="isConfirmed"], input[onchange*="isBookPaid"]').forEach(cb => cb.checked = checked); box.querySelectorAll('.alert-dot').forEach(dot => dot.remove()); } else if (field === 'isShipPaid') { box.querySelectorAll('.alert-dot').forEach(dot => dot.remove()); }
+    }
+
+    async function updateShopSetting(shopId, field, value) {
+        const shop = appData.shops.find(s => s.id === shopId);
+        if(field === 'shopShipping' || field === 'totalBooks' || field === 'shopCurrency') {
+            if (field === 'shopShipping' || field === 'totalBooks') shop[field] = Math.max(1, parseFloat(value) || 0); else if (field === 'shopCurrency') { shop.shopCurrency = value; shop.items.forEach(i => i.currency = value); }
+            let rawExtra = (shop.shopShipping > 0 && shop.totalBooks > 0) ? (shop.shopShipping / shop.totalBooks) : 0; let singleExtra = Math.ceil(rawExtra * 10) / 10; let rate = shop.shopCurrency === 'CAD' ? 5.0 : (shop.shopCurrency === 'USD' ? 7.2 : 1);
+            shop.items.forEach(item => { item.convertedPrice = parseFloat(((item.originalPrice + singleExtra) * rate).toFixed(2)); }); if(shop.books) shop.books.forEach(b => { b.convertedPrice = parseFloat(((b.originalPrice + singleExtra) * rate).toFixed(2)); });
+        } else if (field === 'totalInternationalShipping') shop.totalInternationalShipping = Math.max(0, parseFloat(value) || 0); else if (field === 'warehouseName') shop.warehouseName = value;
+        if(isCloudMode) await saveCloudData(); else saveLocalData(); renderShops(); 
+    }
+
+    async function deleteItemRecord(shopId, itemId) { if(confirm("⚠️ 确定删除该团员的这条买书记录吗？")) { const shop = appData.shops.find(s => s.id === shopId); shop.items = shop.items.filter(i => i.id !== itemId); if(isCloudMode) await saveCloudData(); else saveLocalData(); renderShops(); } }
+
+    function openModal(html, maxWidth='600px') { document.getElementById('modal-body').style.maxWidth = maxWidth; document.getElementById('modal-body').innerHTML = `<div class="modal-header"><div class="modal-title">操作面板</div><button class="close-btn" onclick="closeModal()">×</button></div>${html}`; document.getElementById('global-modal').classList.add('active'); }
+    function closeModal() { document.getElementById('global-modal').classList.remove('active'); }
+    function showToast(msg) { const t = document.getElementById('toast'); t.innerText = msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 2000); }
+
+    function getStoreDatalistHTML() { const storeNames = [...new Set(appData.shops.map(s => s.storeName || '默认店铺'))]; return storeNames.map(name => `<option value="${name}">`).join(''); }
+    function addShop() { openModal(`<div class="form-group"><label>漫画店名 (输入或下拉选择)</label><input type="text" id="new-store-name" class="form-control" placeholder="例：漫游者书店" list="store-options"><datalist id="store-options">${getStoreDatalistHTML()}</datalist></div><div class="form-group"><label>批次 / 车名</label><input type="text" id="new-shop-name" class="form-control" placeholder="例：第1车"></div><button class="btn-primary" style="width:100%; margin-top:10px;" onclick="saveNewShop()">确认创建</button>`, '400px'); }
+    async function saveNewShop() { const storeName = document.getElementById('new-store-name').value.trim() || '默认店铺'; const name = document.getElementById('new-shop-name').value.trim(); if(!name) { showToast('请输入车名'); return; } appData.shops.push({ id: 'shop_' + Date.now(), storeName, name, items: [], books: [], shopShipping: 0, totalBooks: 15, totalInternationalShipping: 0, warehouseName: '', shopCurrency: 'CAD' }); if(isCloudMode) await saveCloudData(); else saveLocalData(); closeModal(); renderShops(); showToast('创建成功'); }
+    function renameShop(shopId) { const shop = appData.shops.find(s => s.id === shopId); if (!shop) return; openModal(`<div class="form-group"><label>漫画店名</label><input type="text" id="edit-store-name" class="form-control" value="${shop.storeName || '默认店铺'}" list="store-options"><datalist id="store-options">${getStoreDatalistHTML()}</datalist></div><div class="form-group"><label>批次 / 车名</label><input type="text" id="edit-shop-name" class="form-control" value="${shop.name}"></div><button class="btn-primary" style="width:100%; margin-top:10px;" onclick="saveRenameShop('${shopId}')">保存</button>`, '400px'); }
+    async function saveRenameShop(shopId) { const storeName = document.getElementById('edit-store-name').value.trim() || '默认店铺'; const name = document.getElementById('edit-shop-name').value.trim(); if(!name) return; const shop = appData.shops.find(s => s.id === shopId); shop.storeName = storeName; shop.name = name; if(isCloudMode) await saveCloudData(); else saveLocalData(); closeModal(); renderShops(); }
+    async function deleteShop(shopId) { if(confirm("⚠️ 确定删除整辆车及其所有刊物记录吗？")) { appData.shops = appData.shops.filter(s => s.id !== shopId); delete expandedShops[shopId]; if(isCloudMode) await saveCloudData(); else saveLocalData(); renderShops(); } }
+
+    function handleImageUpload(input) { const file = input.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = function(e) { const img = new Image(); img.onload = function() { const canvas = document.createElement('canvas'); const MAX_WIDTH = 150; const scaleSize = MAX_WIDTH / img.width; canvas.width = MAX_WIDTH; canvas.height = img.height * scaleSize; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height); tempCoverBase64 = canvas.toDataURL('image/webp', 0.6); document.getElementById('cover-preview').innerHTML = `<img src="${tempCoverBase64}" style="width: 45px; height:68px; object-fit:cover; border-radius:4px; margin-top:8px;">`; }; img.src = e.target.result; }; reader.readAsDataURL(file); }
+
+    function openBookLibraryModal(shopId) {
+        const shop = appData.shops.find(s => s.id === shopId); tempCoverBase64 = null;
+        let listHTML = shop.books.map(b => `<div class="lib-item"><div style="display:flex; gap:10px; align-items:center;">${b.coverImage ? `<img src="${b.coverImage}" style="width:25px; height:38px; object-fit:cover; border-radius:2px;">` : ''}<div><div style="font-weight:bold;">${b.bookName}</div><div style="font-size:12px; color:#888;">原价: ${shop.shopCurrency} ${b.originalPrice} | 折合: ¥${b.convertedPrice}</div></div></div><button class="btn-danger btn-sm" onclick="deleteBookFromLib('${shopId}', '${b.bookId}')">删</button></div>`).join('');
+        let html = `<div style="background:#FAFBFC; padding:15px; border-radius:8px; border:1px solid #EBEDF0; margin-bottom:15px;"><div style="display:flex; gap:10px; margin-bottom:10px;"><div style="width:50px; flex-shrink:0; text-align:center;"><div id="cover-preview">${tempCoverBase64 ? `<img src="${tempCoverBase64}" style="width:45px;height:68px;object-fit:cover;border-radius:4px;">` : ''}</div><button class="btn-outline btn-sm" style="margin-top:5px; width:100%; padding:4px 0; font-size:11px;" onclick="document.getElementById('upload-cover').click()">封</button><input type="file" id="upload-cover" accept="image/*" style="display:none;" onchange="handleImageUpload(this)"></div><div style="flex:1;"><input type="text" id="lib-book-name" class="form-control" placeholder="书名 (如: Batman 129)" style="margin-bottom:8px; padding:8px;"><div style="display:flex; gap:8px;"><input type="number" id="lib-book-price" class="form-control" placeholder="原价 (${shop.shopCurrency})" step="0.01" style="padding:8px;"><button class="btn-primary" style="padding:8px 15px;" onclick="addBookToLib('${shopId}')">添加</button></div></div></div><div style="font-size:12px; color:#888; text-align:center;">只需填写书名和原价，可连续添加多次</div></div><div style="font-weight:bold; margin-bottom:10px; font-size:14px;">📚 本车已有书目 (${shop.books.length}种)</div><div class="lib-list">${listHTML || '<div style="text-align:center; color:#999; padding:20px 0; font-size:13px;">书库为空</div>'}</div><button class="btn-outline" style="width:100%;" onclick="closeModal(); renderShops();">完成录入</button>`;
+        openModal(html); document.querySelector('.modal-title').innerText = '管理本车书目';
+    }
+
+    async function addBookToLib(shopId) {
+        const shop = appData.shops.find(s => s.id === shopId); const name = document.getElementById('lib-book-name').value.trim(); const origPrice = parseFloat(document.getElementById('lib-book-price').value) || 0;
+        if(!name) { showToast('请输入书名'); return; }
+        let rate = shop.shopCurrency === 'CAD' ? 5.0 : (shop.shopCurrency === 'USD' ? 7.2 : 1); let rawExtra = (shop.shopShipping > 0 && shop.totalBooks > 0) ? (shop.shopShipping / shop.totalBooks) : 0; let singleExtra = Math.ceil(rawExtra * 10) / 10;
+        let convPrice = parseFloat(((origPrice + singleExtra) * rate).toFixed(2)); const newBookId = 'bk_' + name.replace(/\s/g, '') + '_' + origPrice + '_' + Date.now();
+        shop.books.push({ bookId: newBookId, bookName: name, originalPrice: origPrice, convertedPrice: convPrice, coverImage: tempCoverBase64 });
+        if(isCloudMode) await saveCloudData(); else saveLocalData(); tempCoverBase64 = null; openBookLibraryModal(shopId); showToast('书目已加入');
+    }
+    async function deleteBookFromLib(shopId, bookId) { if(!confirm('确定从书库移除吗？')) return; const shop = appData.shops.find(s => s.id === shopId); shop.books = shop.books.filter(b => b.bookId !== bookId); if(isCloudMode) await saveCloudData(); else saveLocalData(); openBookLibraryModal(shopId); }
+
+    function openAssignModal(shopId) {
+        const shop = appData.shops.find(s => s.id === shopId); selectedUserIds = new Set();
+        if(shop.books.length === 0) { showToast('本车书库为空，请先管理书目'); return; }
+        let usersHTML = appData.users.map(u => `<label class="picker-item"><input type="checkbox" value="${u.id}" onchange="onPickUser('${u.id}', this.checked)"><span>${u.nickname}</span><span class="picker-qq">QQ: ${u.qq}</span></label>`).join('');
+        let booksHTML = shop.books.map(b => `<label class="picker-item"><input type="checkbox" class="assign-book-cb" value="${b.bookId}"><span>${b.bookName}</span><span class="picker-qq" style="color:var(--primary);font-weight:bold;">¥${b.convertedPrice}</span></label>`).join('');
+        let html = `<div style="margin-bottom:15px; color:#666; font-size:13px;">勾选下面的人，并勾选他们购买的刊物，点击分配即可生成结算记录。</div><div style="display:flex; gap:15px; flex-direction:column;"><div><label style="font-weight:bold; font-size:14px; margin-bottom:5px; display:block; color:var(--primary);">1. 选择购买团员</label><input type="text" id="picker-search" class="form-control" placeholder="搜索昵称或QQ..." oninput="filterAssignUsers()" style="margin-bottom:8px;"><div class="user-picker-box" id="assign-user-box">${usersHTML || '<div style="padding:15px; text-align:center; color:#999;">暂无团员</div>'}</div></div><div><label style="font-weight:bold; font-size:14px; margin-bottom:5px; display:block; color:var(--primary);">2. 勾选购买的刊物</label><div class="user-picker-box" id="assign-book-box">${booksHTML}</div></div></div><button class="btn-primary" style="width:100%; margin-top:20px;" onclick="saveAssign('${shopId}')">确认分配</button>`;
+        openModal(html); document.querySelector('.modal-title').innerText = '分配团员购书';
+    }
+
+    function onPickUser(id, checked) { if (checked) selectedUserIds.add(id); else selectedUserIds.delete(id); }
+    function filterAssignUsers() { const keyword = document.getElementById('picker-search').value.trim().toLowerCase(); const box = document.getElementById('assign-user-box'); const users = appData.users.filter(u => !keyword || u.nickname.toLowerCase().includes(keyword) || (u.qq || '').toLowerCase().includes(keyword)); box.innerHTML = users.map(u => `<label class="picker-item"><input type="checkbox" value="${u.id}" ${selectedUserIds.has(u.id) ? 'checked' : ''} onchange="onPickUser('${u.id}', this.checked)"><span>${u.nickname}</span><span class="picker-qq">QQ: ${u.qq}</span></label>`).join('') || '<div style="padding:15px; text-align:center; color:#999;">没有匹配结果</div>'; }
+
+    async function saveAssign(shopId) {
+        const shop = appData.shops.find(s => s.id === shopId);
+        if (selectedUserIds.size === 0) { showToast("请至少勾选一位团员"); return; }
+        const selectedBookIds = Array.from(document.querySelectorAll('.assign-book-cb:checked')).map(cb => cb.value);
+        if (selectedBookIds.length === 0) { showToast("请勾选至少一本刊物"); return; }
+        selectedUserIds.forEach(uid => { selectedBookIds.forEach(bId => { if (!shop.items.find(i => i.userId === uid && i.bookId === bId)) { const book = shop.books.find(b => b.bookId === bId); shop.items.push({ id: 'item_' + Date.now() + '_' + Math.floor(Math.random()*1000), bookId: bId, userId: uid, bookName: book.bookName, coverImage: book.coverImage, originalPrice: book.originalPrice, currency: shop.shopCurrency, convertedPrice: book.convertedPrice, isConfirmed: false, isBookPaid: false, isShipPaid: false, isArrived: false, isDelivered: false }); } }); });
+        expandedShops[shopId] = true; if(isCloudMode) await saveCloudData(); else saveLocalData(); closeModal(); renderShops(); showToast('分配成功');
+    }
+
+    function openUserModal(id = null) { let nickname = '', qq = ''; if(id) { const u = appData.users.find(x => x.id === id); nickname = u.nickname; qq = u.qq; } openModal(`<input type="hidden" id="modal-user-id" value="${id || ''}"><div class="form-group"><label>昵称</label><input type="text" id="modal-user-nickname" class="form-control" value="${nickname}" placeholder="例：夜翼"></div><div class="form-group"><label>QQ号</label><input type="text" id="modal-user-qq" class="form-control" value="${qq}" placeholder="例：12345678"></div><button class="btn-primary" style="width:100%; margin-top:10px;" onclick="saveUser()">保存</button>`, '400px'); }
+
+    async function saveUser() {
+        const id = document.getElementById('modal-user-id').value; const nickname = document.getElementById('modal-user-nickname').value.trim(); const qq = document.getElementById('modal-user-qq').value.trim();
+        if(!nickname || !qq) { showToast("昵称和QQ不能为空！"); return; }
+        if(id) { const u = appData.users.find(x => x.id === id); u.nickname = nickname; u.qq = qq; } else { appData.users.push({ id: 'u_' + Date.now(), nickname, qq, note: '' }); }
+        if(isCloudMode) await saveCloudData(); else saveLocalData(); closeModal(); renderMembers(); renderShops(); showToast('保存成功');
+    }
+
+    async function updateUserNote(userId, note) { const user = appData.users.find(u => u.id === userId); if (user) { user.note = note; if(isCloudMode) await saveCloudData(); else saveLocalData(); } }
+
+    function openWarehouseModal() { openModal(`<div class="form-group"><label>添加新转运仓</label><div style="display:flex; gap:10px;"><input type="text" id="new-warehouse-input" class="form-control" placeholder="输入仓库名称"><button class="btn-primary" onclick="addWarehouse()">添加</button></div></div><div style="margin-top:20px;"><label>已有仓库 (点击删除)</label><div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:10px;">${appData.warehouses.length === 0 ? '<span style="color:#999;font-size:13px;">暂无仓库</span>' : ''}${appData.warehouses.map(w => `<button class="btn-outline btn-sm" onclick="delWarehouse('${w}')">${w} ×</button>`).join('')}</div></div>`, '400px'); }
+
+    async function addWarehouse() { const val = document.getElementById('new-warehouse-input').value.trim(); if(!val || appData.warehouses.includes(val)) return; appData.warehouses.push(val); if(isCloudMode) await saveCloudData(); else saveLocalData(); openWarehouseModal(); renderShops(); }
+    async function delWarehouse(name) { if(!confirm('确定删除该仓库吗？')) return; appData.warehouses = appData.warehouses.filter(w => w !== name); if(isCloudMode) await saveCloudData(); else saveLocalData(); openWarehouseModal(); renderShops(); }
+
+    async function openUserApproveModal() {
+        if(!isCloudMode) return showToast('单机版无需审批');
+        const { data: pendingUsers } = await supabaseClient.from('profiles').select('*').eq('role', 'pending');
+        let html = `<h3 style="margin-bottom:10px;">待审批用户</h3>`;
+        if (!pendingUsers || pendingUsers.length === 0) html += `<div style="text-align:center; padding:20px; color:#999;">暂无待审批用户</div>`;
+        else html += pendingUsers.map(u => `<div class="list-row" style="padding:10px 0;"><div><div style="font-weight:bold;">${u.username} (QQ: ${u.qq})</div></div><button class="btn-primary btn-sm" onclick="approveUser('${u.id}')">同意加入</button></div>`).join('');
+        html += `<h3 style="margin-top:20px; margin-bottom:10px;">现有管理员</h3>`;
+        const { data: allUsers } = await supabaseClient.from('profiles').select('*').eq('role', 'admin');
+        html += allUsers.map(u => `<div style="padding:5px 0;">${u.username} (QQ: ${u.qq})</div>`).join('');
+        openModal(html, '400px');
+    }
+
+    async function approveUser(userId) { const { error } = await supabaseClient.from('profiles').update({ role: 'member' }).eq('id', userId); if (error) showToast('审批失败'); else { showToast('已通过'); openUserApproveModal(); } }
+
+    init();
+
+    // ===== 终极魔法：暴力销毁 Netlify 右下角黑边 =====
+    setInterval(function() {
+        // 查找所有可能代表 Netlify 角标的元素
+        const badges = document.querySelectorAll('div, a, iframe');
+        badges.forEach(el => {
+            if ((el.innerHTML && el.innerHTML.includes('Powered by Netlify')) || 
+                (el.src && el.src.includes('netlify')) ||
+                (el.id && el.id.includes('netlify'))) {
+                el.remove(); // 找到就立刻从页面上删掉
+            }
+        });
+    }, 500); // 每半秒钟检查一次，只要它敢出来，立刻删掉
+</script>
+</body>
+</html>
